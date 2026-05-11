@@ -1,5 +1,6 @@
 /// <reference path="./types/express.d.ts" />
-import { existsSync, mkdirSync, randomBytes, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { randomBytes } from "node:crypto";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { dirname, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
