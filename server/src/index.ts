@@ -1,7 +1,7 @@
 /// <reference path="./types/express.d.ts" />
-import { existsSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, randomBytes, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { stdin, stdout } from "node:process";
 import { pathToFileURL } from "node:url";
@@ -26,6 +26,7 @@ import {
 import detectPort from "detect-port";
 import { createApp } from "./app.js";
 import { loadConfig } from "./config.js";
+import { resolvePaperclipInstanceRoot } from "./home-paths.js";
 import { logger } from "./middleware/logger.js";
 import { setupLiveEventsWebSocketServer } from "./realtime/live-events-ws.js";
 import {
@@ -86,8 +87,30 @@ export interface StartedServer {
   databaseUrl: string;
 }
 
+function ensureDevModeAgentJwtSecret(instanceRoot: string) {
+  if (process.env.PAPERCLIP_AGENT_JWT_SECRET?.trim()) return;
+  const secretPath = resolve(instanceRoot, ".dev-jwt-secret");
+  try {
+    if (existsSync(secretPath)) {
+      const existing = readFileSync(secretPath, "utf-8").trim();
+      if (existing) {
+        process.env.PAPERCLIP_AGENT_JWT_SECRET = existing;
+        return;
+      }
+    }
+    mkdirSync(dirname(secretPath), { recursive: true });
+    const generated = randomBytes(32).toString("hex");
+    writeFileSync(secretPath, generated, { mode: 0o600 });
+    process.env.PAPERCLIP_AGENT_JWT_SECRET = generated;
+    logger.warn({ secretPath }, "dev fallback: generated PAPERCLIP_AGENT_JWT_SECRET (run `paperclipai onboard` for a production-managed secret)");
+  } catch (err) {
+    logger.error({ err, secretPath }, "dev fallback: failed to persist PAPERCLIP_AGENT_JWT_SECRET; local agents will run without injected PAPERCLIP_API_KEY");
+  }
+}
+
 export async function startServer(): Promise<StartedServer> {
   let config = loadConfig();
+  ensureDevModeAgentJwtSecret(resolvePaperclipInstanceRoot());
   initTelemetry({ enabled: config.telemetryEnabled });
   if (process.env.PAPERCLIP_SECRETS_PROVIDER === undefined) {
     process.env.PAPERCLIP_SECRETS_PROVIDER = config.secretsProvider;
