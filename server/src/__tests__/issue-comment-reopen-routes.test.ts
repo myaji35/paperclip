@@ -594,6 +594,46 @@ describe.sequential("issue comment reopen routes", () => {
     expect(mockIssueService.update).not.toHaveBeenCalled();
   });
 
+  it("does not implicitly reopen closed productivity-review issues via POST comments (XIM-45)", async () => {
+    mockIssueService.getById.mockResolvedValue({
+      ...makeIssue("done"),
+      originKind: "issue_productivity_review",
+    });
+
+    const res = await request(await installActor(createApp()))
+      .post("/api/issues/11111111-1111-4111-8111-111111111111/comments")
+      .send({ body: "another note from the board" });
+
+    expect(res.status).toBe(201);
+    expect(mockIssueService.update).not.toHaveBeenCalled();
+    expect(mockHeartbeatService.wakeup).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ reason: "issue_reopened_via_comment" }),
+    );
+  });
+
+  it("still allows explicit resume to reopen a closed productivity-review issue (XIM-45)", async () => {
+    mockIssueService.getById.mockResolvedValue({
+      ...makeIssue("done"),
+      originKind: "issue_productivity_review",
+    });
+    mockIssueService.update.mockImplementation(async (_id: string, patch: Record<string, unknown>) => ({
+      ...makeIssue("done"),
+      originKind: "issue_productivity_review",
+      ...patch,
+    }));
+
+    const res = await request(await installActor(createApp(), agentActor()))
+      .post("/api/issues/11111111-1111-4111-8111-111111111111/comments")
+      .send({ body: "explicit resume", resume: true });
+
+    expect(res.status).toBe(201);
+    expect(mockIssueService.update).toHaveBeenCalledWith(
+      "11111111-1111-4111-8111-111111111111",
+      { status: "todo" },
+    );
+  });
+
   it("moves assigned blocked issues back to todo via the PATCH comment path", async () => {
     mockIssueService.getById.mockResolvedValue(makeIssue("blocked"));
     mockIssueService.update.mockImplementation(async (_id: string, patch: Record<string, unknown>) => ({
@@ -702,6 +742,32 @@ describe.sequential("issue comment reopen routes", () => {
         }),
       }),
     ));
+  });
+
+  it("does not implicitly reopen closed productivity-review issues via the PATCH comment path (XIM-45)", async () => {
+    const issue = {
+      ...makeIssue("done"),
+      originKind: "issue_productivity_review",
+    };
+    mockIssueService.getById.mockResolvedValue(issue);
+    mockIssueService.update.mockImplementation(async (_id: string, patch: Record<string, unknown>) => ({
+      ...issue,
+      ...patch,
+    }));
+
+    const res = await request(await installActor(createApp()))
+      .patch("/api/issues/11111111-1111-4111-8111-111111111111")
+      .send({ comment: "board following up after the manager decision" });
+
+    expect(res.status).toBe(200);
+    expect(mockIssueService.update).not.toHaveBeenCalledWith(
+      "11111111-1111-4111-8111-111111111111",
+      expect.objectContaining({ status: "todo" }),
+    );
+    expect(mockHeartbeatService.wakeup).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ reason: "issue_reopened_via_comment" }),
+    );
   });
 
   it("wakes the assignee when an assigned blocked issue moves back to todo", async () => {

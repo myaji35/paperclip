@@ -64,6 +64,7 @@ import {
   collectIssueWorkspaceCommandPaths,
 } from "./workspace-command-authz.js";
 import { shouldWakeAssigneeOnCheckout } from "./issues-checkout-wakeup.js";
+import { RECOVERY_ORIGIN_KINDS } from "../services/recovery/origins.js";
 import {
   isInlineAttachmentContentType,
   normalizeIssueAttachmentMaxBytes,
@@ -191,12 +192,18 @@ function shouldImplicitlyMoveCommentedIssueToTodo(input: {
   assigneeAgentId: string | null | undefined;
   actorType: "agent" | "user";
   actorId: string;
+  originKind?: string | null;
 }) {
   // Only human comments should implicitly reopen finished work.
   // Agent-authored comments remain communicative unless reopen was explicit.
   if (input.actorType !== "user") return false;
   if (!isClosedIssueStatus(input.issueStatus) && input.issueStatus !== "blocked") return false;
   if (typeof input.assigneeAgentId !== "string" || input.assigneeAgentId.length === 0) return false;
+  // Productivity-review issues are machine-generated decision artifacts. Once the
+  // manager closes one, board commentary should not implicitly reopen it — that
+  // produces self-echo wake loops on the assignee. Reopen still works via
+  // explicit `resume: true` / `reopen: true`. See XIM-45.
+  if (input.originKind === RECOVERY_ORIGIN_KINDS.issueProductivityReview) return false;
   return true;
 }
 
@@ -1974,6 +1981,7 @@ export function issueRoutes(
           assigneeAgentId: requestedAssigneeAgentId,
           actorType: actor.actorType,
           actorId: actor.actorId,
+          originKind: existing.originKind,
         }));
     const updateReferenceSummaryBefore = titleOrDescriptionChanged
       ? await issueReferencesSvc.listIssueReferenceSummary(existing.id)
@@ -3378,6 +3386,7 @@ export function issueRoutes(
         assigneeAgentId: issue.assigneeAgentId,
         actorType: actor.actorType,
         actorId: actor.actorId,
+        originKind: issue.originKind,
       });
     const hasUnresolvedFirstClassBlockers =
       isBlocked && effectiveMoveToTodoRequested
