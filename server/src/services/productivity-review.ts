@@ -7,6 +7,7 @@ import {
   costEvents,
   heartbeatRuns,
   issueComments,
+  issueThreadInteractions,
   issues,
   projects,
 } from "@paperclipai/db";
@@ -264,6 +265,22 @@ export function productivityReviewService(db: Db, deps?: { enqueueWakeup?: Enque
       .then((rows) => rows[0]?.count ?? 0);
   }
 
+  async function hasPendingBoardConfirmation(companyId: string, issueId: string) {
+    const rows = await db
+      .select({ id: issueThreadInteractions.id })
+      .from(issueThreadInteractions)
+      .where(
+        and(
+          eq(issueThreadInteractions.companyId, companyId),
+          eq(issueThreadInteractions.issueId, issueId),
+          eq(issueThreadInteractions.kind, "request_confirmation"),
+          eq(issueThreadInteractions.status, "pending"),
+        ),
+      )
+      .limit(1);
+    return rows.length > 0;
+  }
+
   async function countIssueCommentsSince(companyId: string, issueId: string, agentId: string, since?: Date) {
     return db
       .select({ count: sql<number>`count(*)::int` })
@@ -379,7 +396,17 @@ export function productivityReviewService(db: Db, deps?: { enqueueWakeup?: Enque
       : null;
 
     const noComment = noCommentStreak >= thresholds.noCommentStreakRuns;
-    const longActive = elapsedMs !== null && elapsedMs >= thresholds.longActiveMs;
+    const rawLongActive = elapsedMs !== null && elapsedMs >= thresholds.longActiveMs;
+    // A pending request_confirmation interaction means the agent is correctly
+    // waiting on the board/user. The issue is semantically "awaiting board"
+    // even if its status hasn't been auto-transitioned to blocked. Suppress
+    // the long_active_duration trigger so productivity reviews don't spam
+    // the manager with the same "agent is just waiting" conclusion every 6h.
+    // Other triggers (no_comment_streak, high_churn) still fire — those
+    // measure actual agent activity, not wall-clock elapsed time.
+    const longActiveSuppressedByBoardConfirmation =
+      rawLongActive && (await hasPendingBoardConfirmation(sourceIssue.companyId, sourceIssue.id));
+    const longActive = rawLongActive && !longActiveSuppressedByBoardConfirmation;
     const highChurn =
       runCountLastHour >= thresholds.highChurnHourly ||
       assigneeRunCommentCountLastHour >= thresholds.highChurnHourly ||
