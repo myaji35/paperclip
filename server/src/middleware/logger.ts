@@ -1,10 +1,18 @@
 import path from "node:path";
 import fs from "node:fs";
+import { config as loadDotenv } from "dotenv";
 import pino from "pino";
 import { pinoHttp } from "pino-http";
 import { readConfigFile } from "../config-file.js";
-import { resolveDefaultLogsDir, resolveHomeAwarePath } from "../home-paths.js";
+import { resolveDefaultLogsDir, resolveHomeAwarePath, resolvePaperclipInstanceRoot } from "../home-paths.js";
 import { shouldSilenceHttpSuccessLog } from "./http-log-policy.js";
+
+// Ensure .env is loaded before reading PAPERCLIP_LOG_LEVEL, in case this
+// module is imported before config.ts runs its own dotenv bootstrap.
+const _instanceEnvPath = path.resolve(resolvePaperclipInstanceRoot(), ".env");
+if (fs.existsSync(_instanceEnvPath)) {
+  loadDotenv({ path: _instanceEnvPath, override: false, quiet: true });
+}
 
 type PinoLevel = "trace" | "debug" | "info" | "warn" | "error" | "fatal";
 const VALID_LEVELS = new Set<string>(["trace", "debug", "info", "warn", "error", "fatal"]);
