@@ -23,7 +23,7 @@ function resolveFileLogLevel(): PinoLevel {
   const envLevel = process.env.PAPERCLIP_LOG_LEVEL?.trim().toLowerCase();
   if (envLevel && VALID_LEVELS.has(envLevel)) return envLevel as PinoLevel;
 
-  const configLevel = (readConfigFile()?.logging as any).logLevel?.trim().toLowerCase();
+  const configLevel = (readConfigFile()?.logging as any)?.logLevel?.trim().toLowerCase();
   if (configLevel && VALID_LEVELS.has(configLevel)) return configLevel as PinoLevel;
 
   return "debug";
