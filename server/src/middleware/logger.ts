@@ -6,6 +6,9 @@ import { readConfigFile } from "../config-file.js";
 import { resolveDefaultLogsDir, resolveHomeAwarePath } from "../home-paths.js";
 import { shouldSilenceHttpSuccessLog } from "./http-log-policy.js";
 
+type PinoLevel = "trace" | "debug" | "info" | "warn" | "error" | "fatal";
+const VALID_LEVELS = new Set<string>(["trace", "debug", "info", "warn", "error", "fatal"]);
+
 function resolveServerLogDir(): string {
   const envOverride = process.env.PAPERCLIP_LOG_DIR?.trim();
   if (envOverride) return resolveHomeAwarePath(envOverride);
@@ -16,10 +19,21 @@ function resolveServerLogDir(): string {
   return resolveDefaultLogsDir();
 }
 
+function resolveFileLogLevel(): PinoLevel {
+  const envLevel = process.env.PAPERCLIP_LOG_LEVEL?.trim().toLowerCase();
+  if (envLevel && VALID_LEVELS.has(envLevel)) return envLevel as PinoLevel;
+
+  const configLevel = (readConfigFile()?.logging as any).logLevel?.trim().toLowerCase();
+  if (configLevel && VALID_LEVELS.has(configLevel)) return configLevel as PinoLevel;
+
+  return "debug";
+}
+
 const logDir = resolveServerLogDir();
 fs.mkdirSync(logDir, { recursive: true });
 
 const logFile = path.join(logDir, "server.log");
+const fileLogLevel = resolveFileLogLevel();
 
 const sharedOpts = {
   translateTime: "SYS:HH:MM:ss",
@@ -28,7 +42,7 @@ const sharedOpts = {
 };
 
 export const logger = pino({
-  level: "debug",
+  level: fileLogLevel,
   redact: ["req.headers.authorization"],
 }, pino.transport({
   targets: [
@@ -40,7 +54,7 @@ export const logger = pino({
     {
       target: "pino-pretty",
       options: { ...sharedOpts, colorize: false, destination: logFile, mkdir: true },
-      level: "debug",
+      level: fileLogLevel,
     },
   ],
 }));
