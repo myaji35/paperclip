@@ -138,6 +138,53 @@ test("testEnvironment does not warn about missing API keys when Hermes config pr
   });
 });
 
+test("testEnvironment accepts OAuth credentials stored in ~/.hermes/auth.json", async () => {
+  await withHermesHomeConfig([
+    "model:",
+    "  default: gpt-5.4",
+    "  provider: openai-codex",
+  ], async () => {
+    await writeFile(
+      join(process.env.HOME!, ".hermes", "auth.json"),
+      JSON.stringify({ credential_pool: { "openai-codex": [{ id: "test" }] } }),
+      "utf8",
+    );
+    const result = await testEnvironment({
+      companyId: "company-test",
+      adapterType: "hermes_local",
+      config: {
+        hermesCommand: "python3",
+        model: "gpt-5.4",
+        provider: "openai-codex",
+      },
+    });
+
+    const codes = result.checks.map((check) => check.code);
+    expect(codes).toContain("hermes_oauth_credentials_found");
+    expect(codes.includes("hermes_no_api_keys")).toBe(false);
+  });
+});
+
+test("testEnvironment still warns when the provider has no stored OAuth credentials", async () => {
+  await withHermesHomeConfig([
+    "model:",
+    "  default: gpt-5.4",
+    "  provider: openai-codex",
+  ], async () => {
+    const result = await testEnvironment({
+      companyId: "company-test",
+      adapterType: "hermes_local",
+      config: {
+        hermesCommand: "python3",
+        model: "gpt-5.4",
+        provider: "openai-codex",
+      },
+    });
+
+    expect(result.checks.map((check) => check.code)).toContain("hermes_no_api_keys");
+  });
+});
+
 test("testEnvironment describes provider-omitted runtime config without inventing provider auto", async () => {
   await withHermesHomeConfig([
     "model:",

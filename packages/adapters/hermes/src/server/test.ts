@@ -234,6 +234,31 @@ async function checkApiKeys(
     };
   }
 
+  // OAuth/subscription providers (openai-codex, nous, copilot) keep their
+  // credentials in ~/.hermes/auth.json instead of an API key.
+  const oauthProvider = asString(config.provider) && asString(config.provider) !== "auto"
+    ? asString(config.provider)!
+    : detectedConfig?.provider.trim();
+  if (oauthProvider) {
+    try {
+      const homeDir = process.env.HOME || process.env.USERPROFILE || "/root";
+      const auth = JSON.parse(readFileSync(`${homeDir}/.hermes/auth.json`, "utf-8")) as {
+        credential_pool?: Record<string, unknown>;
+        providers?: Record<string, unknown>;
+      };
+      if (auth.credential_pool?.[oauthProvider] || auth.providers?.[oauthProvider]) {
+        return {
+          level: "info",
+          message: `Hermes has stored credentials for provider "${oauthProvider}" in ~/.hermes/auth.json`,
+          hint: "Skipping the built-in API-key warning because this provider signs in with OAuth.",
+          code: "hermes_oauth_credentials_found",
+        };
+      }
+    } catch {
+      // ~/.hermes/auth.json may not exist — fall through to the warning
+    }
+  }
+
   return {
     level: "warn",
     message: "No LLM API keys found in environment",
