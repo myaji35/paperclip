@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   BookOpen,
+  Languages,
   LogOut,
   type LucideIcon,
   Moon,
@@ -19,6 +20,7 @@ import { useTheme } from "../context/ThemeContext";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "../lib/utils";
+import { getLocale, setLocale } from "../i18n/locale";
 
 const PROFILE_SETTINGS_PATH = "/instance/settings/profile";
 const DOCS_URL = "https://docs.paperclip.ing/";
@@ -223,6 +225,12 @@ export function SidebarAccountMenu({
                   toggleTheme();
                   setOpen(false);
                 }}
+              />
+              <MenuAction
+                label={getLocale() === "ko" ? "Switch to English" : "한국어로 보기"}
+                description={getLocale() === "ko" ? "Switch the interface language." : "화면 언어를 한국어로 바꿉니다."}
+                icon={Languages}
+                onClick={() => setLocale(getLocale() === "ko" ? "en" : "ko")}
               />
               {deploymentMode === "authenticated" ? (
                 <button

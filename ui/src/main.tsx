@@ -19,7 +19,9 @@ import { initPluginBridge } from "./plugins/bridge-init";
 import { PluginLauncherProvider } from "./plugins/launchers";
 import "@mdxeditor/editor/style.css";
 import "./index.css";
+import { initLocale } from "./i18n/locale";
 
+initLocale();
 initPluginBridge(React, ReactDOM);
 
 if ("serviceWorker" in navigator) {
