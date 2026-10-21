@@ -41,6 +41,8 @@ describe("startDomTranslation", () => {
       <nav><span id="nav"> Issues </span><input id="search" placeholder="Search issues..." /></nav>
       <div class="paperclip-markdown"><p id="md">Done</p></div>
       <code id="code">Status</code>
+      <div class="mdxeditor"><div contenteditable="true"><p id="typed">Done</p></div><div class="_placeholder_x1"><p id="ph">Done</p></div></div>
+      <textarea id="entry" placeholder="Search issues...">Done</textarea>
     `;
     const stop = startDomTranslation(dict, document.body);
 
@@ -48,6 +50,10 @@ describe("startDomTranslation", () => {
     expect(document.getElementById("search")!.getAttribute("placeholder")).toBe("업무 검색...");
     expect(document.getElementById("md")!.textContent).toBe("Done");
     expect(document.getElementById("code")!.textContent).toBe("Status");
+    expect(document.getElementById("typed")!.textContent).toBe("Done");
+    expect(document.getElementById("ph")!.textContent).toBe("완료");
+    expect(document.getElementById("entry")!.getAttribute("placeholder")).toBe("업무 검색...");
+    expect((document.getElementById("entry") as HTMLTextAreaElement).value).toBe("Done");
 
     // Re-renders that write fresh English text get translated again.
     document.getElementById("nav")!.firstChild!.nodeValue = "Done";
@@ -58,6 +64,22 @@ describe("startDomTranslation", () => {
 
     expect(document.getElementById("nav")!.textContent).toBe("완료");
     expect(added.textContent).toBe("상태");
+    stop();
+  });
+
+  it("translates only markdown-dictionary phrases inside markdown bodies", () => {
+    document.body.innerHTML = `
+      <div class="paperclip-markdown">
+        <p id="heading">Answered questions</p>
+        <p id="user">Done</p>
+        <code id="code">Answered questions</code>
+      </div>
+    `;
+    const stop = startDomTranslation(dict, document.body, { "Answered questions": "답변한 질문" });
+
+    expect(document.getElementById("heading")!.textContent).toBe("답변한 질문");
+    expect(document.getElementById("user")!.textContent).toBe("Done");
+    expect(document.getElementById("code")!.textContent).toBe("Answered questions");
     stop();
   });
 });

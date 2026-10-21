@@ -1,6 +1,7 @@
 import { startDomTranslation, type Dictionary } from "./dom-translator";
 import koGenerated from "./ko.json";
 import koOverrides from "./ko-overrides.json";
+import koMarkdown from "./ko-markdown.json";
 
 export type Locale = "ko" | "en";
 
@@ -32,5 +33,5 @@ export function initLocale() {
   document.documentElement.lang = locale;
   if (locale !== "ko") return;
   const dict: Dictionary = { ...(koGenerated as Dictionary), ...(koOverrides as Dictionary) };
-  startDomTranslation(dict);
+  startDomTranslation(dict, document.documentElement, koMarkdown as Dictionary);
 }

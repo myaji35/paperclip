@@ -3,12 +3,15 @@
 // Paperclip's UI hardcodes English strings across hundreds of components. Rather than
 // rewriting every component (and conflicting with upstream on each merge), this layer
 // watches the DOM and swaps known UI strings for their translations. User-authored
-// content (markdown bodies, editors, code) is never touched.
+// content (markdown bodies, editors, code) is never touched — except for a small,
+// explicit set of server-generated phrases (e.g. "Answered questions") that land in
+// markdown bodies; those use a separate markdown-only dictionary.
 
 export type Dictionary = Record<string, string>;
 
+const MARKDOWN_SELECTOR = ".paperclip-markdown";
+
 const SKIP_SELECTOR = [
-  ".paperclip-markdown",
   ".mdxeditor",
   "[contenteditable='true']",
   "[contenteditable='']",
@@ -22,6 +25,10 @@ const SKIP_SELECTOR = [
 ].join(",");
 
 const TRANSLATED_ATTRS = ["placeholder", "title", "aria-label", "alt"] as const;
+// Text-entry elements hold user content, but their placeholder/label attributes are UI.
+// MDXEditor renders its placeholder as a non-editable sibling inside the editor root.
+const EDITOR_PLACEHOLDER_SELECTOR = ".mdxeditor [class*='_placeholder_']:not([contenteditable='true'])";
+const TEXT_ENTRY_SELECTOR = "textarea, [contenteditable='true'], [contenteditable='']";
 const TRAILING_PUNCT = /^(.*?)([:：…]|\.\.\.)$/s;
 
 interface Pattern {
@@ -102,13 +109,32 @@ export function createTranslator(dict: Dictionary) {
   return { translate };
 }
 
-export function startDomTranslation(dict: Dictionary, root: Node = document.documentElement) {
+export function startDomTranslation(
+  dict: Dictionary,
+  root: Node = document.documentElement,
+  markdownDict: Dictionary = {},
+) {
   const { translate } = createTranslator(dict);
+  const { translate: translateMarkdown } = createTranslator(markdownDict);
   const textRecords = new WeakMap<Text, TextRecord>();
   const attrRecords = new WeakMap<Element, Map<string, TextRecord>>();
 
   function isSkipped(element: Element | null): boolean {
-    return !element || element.closest(SKIP_SELECTOR) !== null;
+    if (!element) return true;
+    if (element.closest(EDITOR_PLACEHOLDER_SELECTOR)) return false;
+    return element.closest(SKIP_SELECTOR) !== null;
+  }
+
+  function translateEditorPlaceholders(element: Element) {
+    const placeholders = element.matches(EDITOR_PLACEHOLDER_SELECTOR)
+      ? [element]
+      : [...element.querySelectorAll(EDITOR_PLACEHOLDER_SELECTOR)];
+    for (const placeholder of placeholders) {
+      const walker = document.createTreeWalker(placeholder, NodeFilter.SHOW_TEXT);
+      for (let current = walker.nextNode(); current; current = walker.nextNode()) {
+        translateText(current as Text);
+      }
+    }
   }
 
   function translateText(node: Text) {
@@ -116,7 +142,8 @@ export function startDomTranslation(dict: Dictionary, root: Node = document.docu
     const record = textRecords.get(node);
     if (record && current === record.output) return;
     if (isSkipped(node.parentElement)) return;
-    const result = translate(current);
+    const inMarkdown = node.parentElement!.closest(MARKDOWN_SELECTOR) !== null;
+    const result = inMarkdown ? translateMarkdown(current) : translate(current);
     if (!result) return;
     const leading = /^\s*/.exec(current)?.[0] ?? "";
     const trailing = /\s*$/.exec(current)?.[0] ?? "";
@@ -126,6 +153,8 @@ export function startDomTranslation(dict: Dictionary, root: Node = document.docu
   }
 
   function translateAttrs(element: Element) {
+    if (element.closest(MARKDOWN_SELECTOR)) return;
+    if (isSkipped(element) && !element.matches(TEXT_ENTRY_SELECTOR)) return;
     for (const attr of TRANSLATED_ATTRS) {
       const current = element.getAttribute(attr);
       if (!current) continue;
@@ -150,11 +179,16 @@ export function startDomTranslation(dict: Dictionary, root: Node = document.docu
     }
     if (node.nodeType !== Node.ELEMENT_NODE) return;
     const element = node as Element;
-    if (isSkipped(element)) return;
+    if (isSkipped(element)) {
+      if (element.matches(TEXT_ENTRY_SELECTOR)) translateAttrs(element);
+      translateEditorPlaceholders(element);
+      return;
+    }
     translateAttrs(element);
     const walker = document.createTreeWalker(element, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, {
       acceptNode(candidate) {
         if (candidate.nodeType === Node.ELEMENT_NODE && (candidate as Element).matches(SKIP_SELECTOR)) {
+          if ((candidate as Element).matches(TEXT_ENTRY_SELECTOR)) translateAttrs(candidate as Element);
           return NodeFilter.FILTER_REJECT;
         }
         return NodeFilter.FILTER_ACCEPT;
@@ -164,6 +198,7 @@ export function startDomTranslation(dict: Dictionary, root: Node = document.docu
       if (current.nodeType === Node.TEXT_NODE) translateText(current as Text);
       else translateAttrs(current as Element);
     }
+    translateEditorPlaceholders(element);
   }
 
   const pending = new Set<Node>();
