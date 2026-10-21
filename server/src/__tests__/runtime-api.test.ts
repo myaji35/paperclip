@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { buildRuntimeApiCandidateUrls, choosePrimaryRuntimeApiUrl } from "../runtime-api.js";
+import {
+  buildRuntimeApiCandidateUrls,
+  choosePrimaryRuntimeApiUrl,
+  collectReachableInterfaceHosts,
+} from "../runtime-api.js";
 
 describe("runtime API discovery", () => {
   it("prefers the explicit public base URL for the primary runtime URL", () => {
@@ -11,6 +15,17 @@ describe("runtime API discovery", () => {
         port: 3102,
       }),
     ).toBe("https://paperclip.example.com");
+  });
+
+  it("prefers the loopback bind host over allowed hostnames for the primary runtime URL", () => {
+    expect(
+      choosePrimaryRuntimeApiUrl({
+        authPublicBaseUrl: null,
+        allowedHostnames: ["192.168.1.50"],
+        bindHost: "127.0.0.1",
+        port: 3100,
+      }),
+    ).toBe("http://127.0.0.1:3100");
   });
 
   it("builds ordered callback candidates from explicit, allowed, bind, and interface hosts", () => {
@@ -56,7 +71,23 @@ describe("runtime API discovery", () => {
       "http://198.51.100.10:3102",
       "http://runtime-host.example.test:3102",
       "http://203.0.113.42:3102",
-      "http://[fe80::1]:3102",
+    ]);
+  });
+
+  it("tries the preferred API URL before derived callback candidates", () => {
+    expect(
+      buildRuntimeApiCandidateUrls({
+        preferredApiUrl: "https://agent-entry.example.test/base/path",
+        authPublicBaseUrl: "https://paperclip.example.test/app",
+        allowedHostnames: ["198.51.100.10"],
+        bindHost: "0.0.0.0",
+        port: 3102,
+        networkInterfacesMap: {},
+      }),
+    ).toEqual([
+      "https://agent-entry.example.test",
+      "https://paperclip.example.test",
+      "https://198.51.100.10:3102",
     ]);
   });
 
@@ -73,5 +104,78 @@ describe("runtime API discovery", () => {
       "http://127.0.0.1:3102",
       "http://host.docker.internal:3102",
     ]);
+  });
+
+  it("prefers usable interface hosts and skips link-local addresses", () => {
+    expect(
+      collectReachableInterfaceHosts({
+        networkInterfacesMap: {
+          en0: [
+            {
+              address: "fe80::1",
+              family: "IPv6",
+              internal: false,
+              netmask: "ffff:ffff:ffff:ffff::",
+              cidr: "fe80::1/64",
+              mac: "00:00:00:00:00:00",
+              scopeid: 1,
+            },
+            {
+              address: "192.168.6.178",
+              family: "IPv4",
+              internal: false,
+              netmask: "255.255.252.0",
+              cidr: "192.168.6.178/22",
+              mac: "00:00:00:00:00:00",
+            },
+            {
+              address: "fd7a:115c:a1e0::8a3a:a11d",
+              family: "IPv6",
+              internal: false,
+              netmask: "ffff:ffff:ffff::",
+              cidr: "fd7a:115c:a1e0::8a3a:a11d/48",
+              mac: "00:00:00:00:00:00",
+              scopeid: 0,
+            },
+          ],
+          en1: [
+            {
+              address: "169.254.10.20",
+              family: "IPv4",
+              internal: false,
+              netmask: "255.255.0.0",
+              cidr: "169.254.10.20/16",
+              mac: "00:00:00:00:00:00",
+            },
+          ],
+        },
+      }),
+    ).toEqual([
+      "192.168.6.178",
+      "fd7a:115c:a1e0::8a3a:a11d",
+    ]);
+  });
+
+  it("ignores a public base URL that has no scheme instead of returning the string \"null\"", () => {
+    expect(
+      choosePrimaryRuntimeApiUrl({
+        authPublicBaseUrl: "runtime-host.example.test:3100",
+        allowedHostnames: ["runtime-host.example.test"],
+        bindHost: "0.0.0.0",
+        port: 3102,
+      }),
+    ).toBe("http://runtime-host.example.test:3102");
+  });
+
+  it("builds candidates without throwing when the public base URL has no scheme", () => {
+    expect(
+      buildRuntimeApiCandidateUrls({
+        authPublicBaseUrl: "runtime-host.example.test:3100",
+        allowedHostnames: ["runtime-host.example.test"],
+        bindHost: "0.0.0.0",
+        port: 3102,
+        networkInterfacesMap: {},
+      }),
+    ).toEqual(["http://runtime-host.example.test:3102"]);
   });
 });
