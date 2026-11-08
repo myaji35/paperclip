@@ -1,3 +1,4 @@
+import { useAgentDetailRouteSync } from "./useAgentDetailRouteSync";
 import { useSelectedHeartbeatRun } from "../hooks/useSelectedHeartbeatRun";
 import { grokBotApi } from "@/api/grokBot";
 import { GrokBotWorkSummary } from "@/components/GrokBotWorkSummary";
@@ -972,26 +973,11 @@ export function AgentDetail() {
     [heartbeats],
   );
 
-  useEffect(() => {
-    if (!agent) return;
-    if (urlRunId) {
-      if (routeAgentRef !== canonicalAgentRef) {
-        navigate(`/agents/${canonicalAgentRef}/runs/${urlRunId}`, { replace: true });
-      }
-      return;
-    }
-    if (legacyAuditSection) return;
-    const canonicalTab = activeView === "run-detail" ? "overview" : activeView;
-    if (routeAgentRef !== canonicalAgentRef || urlTab !== canonicalTab) {
-      navigate(agentDetailHref(canonicalAgentRef, canonicalTab), { replace: true });
-      return;
-    }
-  }, [agent, routeAgentRef, canonicalAgentRef, urlRunId, urlTab, activeView, legacyAuditSection, navigate]);
-
-  useEffect(() => {
-    if (!agent?.companyId || agent.companyId === selectedCompanyId) return;
-    setSelectedCompanyId(agent.companyId, { source: "route_sync" });
-  }, [agent?.companyId, selectedCompanyId, setSelectedCompanyId]);
+  useAgentDetailRouteSync({
+    agentCompanyId: agent?.companyId, companies, routeCompanyId,
+    selectedCompanyId, setSelectedCompanyId, routeAgentRef, canonicalAgentRef,
+    urlRunId, urlTab, activeView, legacyAuditSection, navigate,
+  });
 
   // Invoke / pause / resume / terminate / duplicate / reset live in the shared
   // AgentActionButtons component. Approval and lifecycle retry stay in the detail header.
