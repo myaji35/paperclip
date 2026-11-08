@@ -5978,6 +5978,12 @@ export function agentRoutes(
           (await getExecutionBlocker(db, agent.companyId, issueId))?.runId !== failedRun.id)) {
         throw conflict("The stopped run no longer owns this task's recovery hold.");
       }
+      if (!issueId && agent.adapterType === "paperclip_runner") {
+        throw badRequest(
+          "업무가 없는 실행은 Paperclip Runner 에서 재시도할 수 없습니다. 업무 화면에서 다시 시도하거나 업무에 메시지를 보내세요.",
+          { code: "paperclip_runner_retry_requires_task" },
+        );
+      }
       if (issueId) {
         const issue = await issueService(db).getById(issueId);
         if (!issue || issue.companyId !== agent.companyId) throw notFound("Task not found");
@@ -6258,6 +6264,16 @@ export function agentRoutes(
     }
     if (typeof body.idempotencyKey === "string" && body.idempotencyKey.length > 0) {
       wakeOpts.idempotencyKey = body.idempotencyKey;
+    }
+    if (agent.adapterType === "paperclip_runner" &&
+        !["issueId", "taskId", "taskKey"].some((key) => {
+          const value = wakeOpts.payload?.[key];
+          return typeof value === "string" && value.trim().length > 0;
+        })) {
+      throw badRequest(
+        "Paperclip Runner 에이전트는 업무 없이 실행할 수 없습니다. 업무를 배정하거나 업무에 메시지를 보내세요.",
+        { code: "paperclip_runner_invoke_requires_task" },
+      );
     }
     const run = await heartbeat.wakeup(id, wakeOpts);
 
